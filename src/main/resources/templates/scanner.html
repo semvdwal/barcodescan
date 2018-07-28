@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scanner</title>
+    <script
+            src="https://code.jquery.com/jquery-3.3.1.min.js"
+            integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+            crossorigin="anonymous"></script>
+    <script type="text/javascript" src="/js/quagga/quagga.js"></script>
+
+    <style type="text/css">
+
+        #viewer {
+            position: relative;
+            margin-right: 50px;
+        }
+
+        .drawingBuffer {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+
+</head>
+<body>
+    <div class="selector">
+        <select id="mediaSelect" onchange="initViewer()">
+            <option value="">Maak een keuze</option>
+        </select>
+    </div>
+    <div id="viewer" style="float: left;"></div>
+    <div style="float: left;">
+        <div>
+            Gevonden code: <span id="code">-</span><br/>
+            Aantal samples: <span id="samples"></span>
+        </div>
+        <button onclick="resetData()">Reset</button>
+        <!--&nbsp;-->
+        <!--<button onclick="getData()">Zoek product</button>-->
+        &nbsp;
+        <button onclick="sendCode()">Verstuur code</button>
+        <!--<br/><br/>-->
+        <!--<div>-->
+            <!--<h2 id="title"></h2>-->
+            <!--<p id="description"></p>-->
+            <!--Merk: <span id="brand"></span><br/>-->
+            <!--Kleur: <span id="color"></span><br/>-->
+            <!--Maat (UK): <span id="size"></span><br/>-->
+            <!--<img id="image" style="max-width: 150px"/>-->
+        <!--</div>-->
+    </div>
+
+    <audio id="bliep" src="/sounds/bliep.mp3" preload="auto"></audio>
+
+    <script type="text/javascript">
+        var frequencyMap = {};
+
+        var code = "";
+        var sampleSize = 0;
+        var image = null;
+        var item = null;
+        var busy = false;
+
+        var config = {
+            inputStream: {
+                name: "Live",
+                type: "LiveStream",
+                target: $('#viewer')[0]
+            },
+            locate: false,
+            decoder: {
+                readers: ["upc_reader"]
+            },
+            locator: {
+                halfSample: true,
+                patchSize: "medium", // x-small, small, medium, large, x-large
+                debug: {
+                    showCanvas: false,
+                    showPatches: false,
+                    showFoundPatches: false,
+                    showSkeleton: false,
+                    showLabels: false,
+                    showPatchLabels: false,
+                    showRemainingPatchLabels: false,
+                    boxFromPatches: {
+                        showTransformed: false,
+                        showTransformedBox: false,
+                        showBB: false
+                    }
+                }
+            }
+        };
+
+        function findMedia() {
+            navigator.mediaDevices.enumerateDevices().then(function (devices) {
+                for (index in devices) {
+                    var device = devices[index];
+                    if (device.kind == 'videoinput') {
+                        $('#mediaSelect').append($('<option value="' + device.deviceId + '">' + device.label + '</option>'));
+                    }
+                }
+            });
+        }
+
+        function initViewer() {
+            if ($('#mediaSelect').val() === "") {
+                return;
+            }
+            config.constraints = {
+                deviceId: $('#mediaSelect').val()
+            };
+            Quagga.init(config, function (err) {
+                if (err) {
+                    console.log(err);
+                    return
+                }
+                Quagga.start();
+                Quagga.onDetected(function (result) {
+                    addCode(result.codeResult.code);
+                });
+            });
+        }
+
+        function addCode(newCode) {
+            if (busy) return;
+
+            var found = 'c' + newCode;
+            if (frequencyMap.hasOwnProperty(found)) frequencyMap[found]++;
+            else frequencyMap[found] = 1;
+
+            var mostFrequentKey = "";
+            var mostFrequentCount = 0;
+            for (var key in frequencyMap) {
+                if (frequencyMap[key] > mostFrequentCount) {
+                    sampleSize += frequencyMap[key];
+                    mostFrequentCount = frequencyMap[key];
+                    mostFrequentKey = key.substr(1);
+                }
+            }
+
+            code = mostFrequentKey;
+            showCode();
+            
+            if (sampleSize > 20 && mostFrequentCount > 15) {
+                busy = true;
+                sendCode();
+            }
+        }
+
+        function sendCode() {
+            busy = true;
+            $.getJSON('/api/scan', {code: code}, function (data, status) {
+                playSound();
+                resetData();
+                window.setTimeout(function () {
+                    busy = false;
+                }, 500);
+            });
+        }
+
+        function resetData() {
+            frequencyMap = {};
+            code = '';
+            item = null;
+            image = null;
+            sampleSize = 0;
+            $('#samples').text(sampleSize);
+
+            $('#code').text('-');
+            // $('#title').text('');
+            // $('#description').text('');
+            // $('#brand').text('');
+            // $('#color').text('');
+            // $('#size').text('');
+            // $('#image').attr('src', '');
+        }
+
+        function getData() {
+            $.getJSON("https://api.upcitemdb.com/prod/trial/lookup", {upc: code}, function (data) {
+                if (data.hasOwnProperty('items') && data.items.length > 0) {
+                    var f = data.items[0];
+                    item = {
+                        code: f.upc,
+                        title: f.title,
+                        brand: f.brand,
+                        color: f.color,
+                        size: f.size,
+                        description: f.description
+                    };
+
+                    if (f.hasOwnProperty('images') && f.images.length > 0) {
+                        image = f.images[0];
+                        item.image = image;
+                    }
+                    showData();
+                }
+            });
+        }
+
+        function showCode() {
+            $('#code').text(code);
+            $('#samples').text(sampleSize);
+        }
+
+        function showData() {
+            $('#title').text(item.title);
+            $('#description').text(item.description);
+            $('#brand').text(item.brand);
+            $('#color').text(item.color);
+            $('#size').text(item.size);
+            $('#image').attr('src', image);
+        }
+
+        function playSound() {
+            $('#bliep')[0].play();
+        }
+
+        $(function () {
+            findMedia();
+        });
+
+    </script>
+</body>
+</html>
