@@ -48,7 +48,10 @@
         </div>
     </div>
 
-    <audio id="bliep" src="/sounds/bliep.mp3" preload="auto"></audio>
+    <audio id="bliep">
+        <source src="sounds/bliep.aac" type="audio/mpeg"/>
+        <source src="sounds/bliep.mp3" type="audio/mp3"/>
+    </audio>
 
     <script type="text/javascript">
         var frequencyMap = {};
