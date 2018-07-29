@@ -25,11 +25,6 @@
 
 </head>
 <body>
-    <div class="selector">
-        <select id="mediaSelect" onchange="initViewer()">
-            <option value="">Maak een keuze</option>
-        </select>
-    </div>
     <div id="viewer" style="float: left;"></div>
     <div style="float: left;">
         <div>
@@ -37,19 +32,20 @@
             Aantal samples: <span id="samples"></span>
         </div>
         <button onclick="resetData()">Reset</button>
-        <!--&nbsp;-->
-        <!--<button onclick="getData()">Zoek product</button>-->
         &nbsp;
-        <button onclick="sendCode()">Verstuur code</button>
-        <!--<br/><br/>-->
-        <!--<div>-->
-            <!--<h2 id="title"></h2>-->
-            <!--<p id="description"></p>-->
-            <!--Merk: <span id="brand"></span><br/>-->
-            <!--Kleur: <span id="color"></span><br/>-->
-            <!--Maat (UK): <span id="size"></span><br/>-->
-            <!--<img id="image" style="max-width: 150px"/>-->
-        <!--</div>-->
+        <button onclick="getData()">Zoek product</button>
+        &nbsp;
+        <button id="send" onclick="sendCode()">Verstuur code</button>
+        <br/><br/>
+        <div>
+            <h2 id="title"></h2>
+            <p id="description"></p>
+            Model: <span id="model"></span><br/>
+            Merk: <span id="brand"></span><br/>
+            Kleur: <span id="color"></span><br/>
+            Maat (UK): <span id="size"></span><br/>
+            <img id="image" style="max-width: 150px"/>
+        </div>
     </div>
 
     <audio id="bliep" src="/sounds/bliep.mp3" preload="auto"></audio>
@@ -98,18 +94,18 @@
                 for (index in devices) {
                     var device = devices[index];
                     if (device.kind == 'videoinput') {
-                        $('#mediaSelect').append($('<option value="' + device.deviceId + '">' + device.label + '</option>'));
+                        initViewer(device.deviceId);
+                        break;
                     }
                 }
             });
         }
 
-        function initViewer() {
-            if ($('#mediaSelect').val() === "") {
-                return;
-            }
+        function initViewer(deviceId) {
             config.constraints = {
-                deviceId: $('#mediaSelect').val()
+                deviceId: deviceId,
+                width: 640,
+                height: 480
             };
             Quagga.init(config, function (err) {
                 if (err) {
@@ -145,18 +141,24 @@
             
             if (sampleSize > 20 && mostFrequentCount > 15) {
                 busy = true;
-                sendCode();
+                getData();
             }
         }
 
         function sendCode() {
+            $('#send').attr('disabled', 'disabled');
             busy = true;
-            $.getJSON('/api/scan', {code: code}, function (data, status) {
-                playSound();
-                resetData();
-                window.setTimeout(function () {
-                    busy = false;
-                }, 500);
+            $.post({
+                url: '/api/scan',
+                data: JSON.stringify(item),
+                contentType: 'application/json',
+                success: function (data, status) {
+                    playSound();
+                    resetData();
+                    window.setTimeout(function () {
+                        busy = false;
+                    }, 500);
+                }
             });
         }
 
@@ -169,16 +171,17 @@
             $('#samples').text(sampleSize);
 
             $('#code').text('-');
-            // $('#title').text('');
-            // $('#description').text('');
-            // $('#brand').text('');
-            // $('#color').text('');
-            // $('#size').text('');
-            // $('#image').attr('src', '');
+            $('#title').text('');
+            $('#description').text('');
+            $('#brand').text('');
+            $('#color').text('');
+            $('#size').text('');
+            $('#model').text('');
+            $('#image').attr('src', '');
         }
 
         function getData() {
-            $.getJSON("https://api.upcitemdb.com/prod/trial/lookup", {upc: code}, function (data) {
+            $.getJSON("/api/productinfo", {upc: code}, function (data) {
                 if (data.hasOwnProperty('items') && data.items.length > 0) {
                     var f = data.items[0];
                     item = {
@@ -187,6 +190,7 @@
                         brand: f.brand,
                         color: f.color,
                         size: f.size,
+                        model: f.model,
                         description: f.description
                     };
 
@@ -210,7 +214,9 @@
             $('#brand').text(item.brand);
             $('#color').text(item.color);
             $('#size').text(item.size);
+            $('#model').text(item.model);
             $('#image').attr('src', image);
+            $('#send').removeAttr('disabled');
         }
 
         function playSound() {
