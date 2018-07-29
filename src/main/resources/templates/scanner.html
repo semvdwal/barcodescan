@@ -156,7 +156,6 @@
                 data: JSON.stringify(item),
                 contentType: 'application/json',
                 success: function (data, status) {
-                    playSound();
                     resetData();
                     window.setTimeout(function () {
                         busy = false;
@@ -202,6 +201,7 @@
                         item.image = image;
                     }
                     showData();
+                    playSound();
                 }
             });
         }
